@@ -239,6 +239,11 @@ fn main() -> ExitCode {
         .and_then(|_| {
             if read_only {
                 App::open_read_only(&home)
+            } else if let Command::Job {
+                command: JobCommand::Create { source, .. },
+            } = &cli.command
+            {
+                App::open_with_sources(&home, source)
             } else {
                 App::open(&home)
             }

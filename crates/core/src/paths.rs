@@ -49,6 +49,43 @@ pub fn safe_entry(name: &str) -> Result<PathBuf> {
 pub fn existing(path: &Path) -> Result<PathBuf> {
     fs::canonicalize(path).with_context(|| format!("Path unavailable: {}", path.display()))
 }
+/// Resolve existing ancestors without creating missing path components.
+/// Resolve symlinks before processing `..`, including for a not-yet-created home.
+pub fn prospective(path: &Path) -> Result<PathBuf> {
+    let absolute = std::path::absolute(path)?;
+    let mut resolved = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::CurDir => continue,
+            Component::ParentDir => {
+                resolved.pop();
+            }
+            _ => resolved.push(component.as_os_str()),
+        }
+        match fs::canonicalize(&resolved) {
+            Ok(path) => resolved = path,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(resolved)
+}
+pub fn check_state_source(home: &Path, source: &Path) -> Result<()> {
+    let source = prospective(source)?;
+    if home.starts_with(&source) {
+        return config(
+            "state_inside_source",
+            "State directory cannot be inside a source (it changes during runs)",
+        );
+    }
+    if source.starts_with(home) {
+        return config(
+            "state_overlap",
+            "Sources cannot be inside the state directory",
+        );
+    }
+    Ok(())
+}
 pub fn private_dir(path: &Path) -> Result<()> {
     if path.exists() {
         if fs::symlink_metadata(path)?.file_type().is_symlink() || !path.is_dir() {

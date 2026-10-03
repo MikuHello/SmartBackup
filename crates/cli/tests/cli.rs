@@ -748,3 +748,144 @@ fn trailing_separators_cannot_hide_a_source_root_symlink() {
         assert_eq!(error["reason_code"], "unsupported_source_symlink");
     }
 }
+
+fn tree_snapshot(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>, std::time::SystemTime)> {
+    fn visit(
+        root: &Path,
+        path: &Path,
+        entries: &mut Vec<(std::path::PathBuf, Vec<u8>, std::time::SystemTime)>,
+    ) {
+        let metadata = fs::symlink_metadata(path).unwrap();
+        let bytes = if metadata.is_file() {
+            fs::read(path).unwrap()
+        } else {
+            vec![]
+        };
+        entries.push((
+            path.strip_prefix(root).unwrap().to_owned(),
+            bytes,
+            metadata.modified().unwrap(),
+        ));
+        if metadata.is_dir() {
+            for entry in fs::read_dir(path).unwrap() {
+                visit(root, &entry.unwrap().path(), entries);
+            }
+        }
+    }
+    let mut entries = vec![];
+    visit(root, root, &mut entries);
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries
+}
+
+#[test]
+fn state_inside_source_is_rejected_before_any_startup_writes() {
+    let f = Fixture::new();
+    let (_, shown) = cli(&f.home, &["job", "show", "Daily"]);
+    let job = f
+        .home
+        .join("jobs")
+        .join(format!("{}.toml", shown["data"]["id"].as_str().unwrap()));
+    let text = fs::read_to_string(&job).unwrap();
+    // Keep output outside the new source while placing state inside it.
+    let container = f._tmp.path().join("container");
+    fs::create_dir(&container).unwrap();
+    let home = container.join("state");
+    fs::rename(&f.home, &home).unwrap();
+    let job = home.join("jobs").join(job.file_name().unwrap());
+    let old_path = shown["data"]["sources"][0]["path"].as_str().unwrap();
+    // Both fixture paths are on the same volume; retain its recorded identity.
+    fs::write(
+        job,
+        text.replace(
+            old_path,
+            container.canonicalize().unwrap().to_str().unwrap(),
+        ),
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&home, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let before = tree_snapshot(&container);
+    for args in [
+        vec!["run", "Daily"],
+        vec!["history", "list"],
+        vec!["config", "validate"],
+    ] {
+        let (code, error) = cli(&home, &args);
+        assert_eq!(code, 4, "{error}");
+        assert_eq!(error["reason_code"], "state_inside_source");
+        assert!(
+            tree_snapshot(&container) == before,
+            "Rejected command changed source tree"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&home).unwrap().permissions().mode() & 0o777,
+                0o755
+            );
+        }
+    }
+}
+
+#[test]
+fn job_creation_does_not_initialize_state_inside_its_source() {
+    let temp = TempDir::new().unwrap();
+    let source = temp.path().join("source");
+    let output = temp.path().join("output");
+    fs::create_dir(&source).unwrap();
+    fs::create_dir(&output).unwrap();
+    fs::write(source.join("keep.txt"), b"unchanged").unwrap();
+    let before = tree_snapshot(&source);
+    let home = source.join("new/nested/state");
+    let (code, error) = cli(
+        &home,
+        &[
+            "job",
+            "create",
+            "Unsafe",
+            "--source",
+            &format!("Docs={}", source.display()),
+            "--output",
+            output.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 4, "{error}");
+    assert_eq!(error["reason_code"], "state_inside_source");
+    assert!(
+        tree_snapshot(&source) == before,
+        "Creating an invalid Job changed its source"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn state_source_guard_resolves_symlink_ancestors_and_parent_components() {
+    let temp = TempDir::new().unwrap();
+    let source = temp.path().join("source");
+    let output = temp.path().join("output");
+    fs::create_dir_all(source.join("child")).unwrap();
+    fs::create_dir(&output).unwrap();
+    std::os::unix::fs::symlink(source.join("child"), temp.path().join("alias")).unwrap();
+    let before = tree_snapshot(&source);
+    let home = temp.path().join("alias/../new/state");
+    let (code, error) = cli(
+        &home,
+        &[
+            "job",
+            "create",
+            "Unsafe",
+            "--source",
+            &format!("Docs={}", source.display()),
+            "--output",
+            output.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 4, "{error}");
+    assert_eq!(error["reason_code"], "state_inside_source");
+    assert!(tree_snapshot(&source) == before);
+}

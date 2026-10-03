@@ -27,10 +27,34 @@ impl App {
     pub fn open(home: &Path) -> Result<Self> {
         Self::open_mode(home, false)
     }
+    /// Open for Job creation, checking proposed sources before initializing state.
+    pub fn open_with_sources(home: &Path, sources: &[String]) -> Result<Self> {
+        let resolved_home = paths::prospective(home)?;
+        for value in sources {
+            let (_, source) = value.split_once('=').ok_or_else(|| error::Failure {
+                exit: 4,
+                reason: "invalid_source",
+                message: "Source must use ALIAS=PATH syntax".into(),
+            })?;
+            let source = paths::source_candidate(Path::new(source))?;
+            paths::check_state_source(&resolved_home, &source)?;
+        }
+        Self::open(home)
+    }
     pub fn open_read_only(home: &Path) -> Result<Self> {
         Self::open_mode(home, true)
     }
     fn open_mode(home: &Path, read_only: bool) -> Result<Self> {
+        // Inspect all configured sources before chmod, lock creation, or SQLite recovery.
+        // Startup writes can otherwise modify a source even when Run later rejects it.
+        let resolved_home = paths::prospective(home)?;
+        if home.join("jobs").try_exists()? {
+            for job in jobs::list(home)?.0 {
+                for source in &job.sources {
+                    paths::check_state_source(&resolved_home, &source.path)?;
+                }
+            }
+        }
         if !read_only {
             paths::private_dir(home)?;
         }
@@ -110,6 +134,10 @@ impl App {
     }
     pub fn run(&self, selector: &str, force: bool) -> Result<Run> {
         let job = self.job(selector)?;
+        // Also protect long-lived Core callers whose Job was edited after open.
+        for source in &job.sources {
+            paths::check_state_source(&self.home, &source.path)?;
+        }
         self.state.interrupt_abandoned()?;
         let mut run = archive::new_run(&job);
         self.state.save(&run)?;
