@@ -557,3 +557,62 @@ fn dry_run_does_not_rebuild_or_mutate_a_damaged_history_database() {
         b"diagnostic evidence"
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn nonportable_source_names_and_root_symlinks_fail_explicitly() {
+    let f = Fixture::new();
+    f.configure();
+    fs::write(f.src.join("a\\b.txt"), "must not rename me").unwrap();
+    let (code, error) = cli(&f.home, &["run", "Daily"]);
+    assert_eq!(code, 4, "{error}");
+    assert_eq!(error["reason_code"], "unsafe_path");
+    assert!(
+        !fs::read_dir(&f.out)
+            .unwrap()
+            .flatten()
+            .any(|e| e.path().extension().is_some_and(|x| x == "7z"))
+    );
+    let link = f._tmp.path().join("source-link");
+    std::os::unix::fs::symlink(&f.src, &link).unwrap();
+    let source = format!("Docs={}", link.display());
+    let (code, error) = cli(
+        &f.home,
+        &[
+            "job",
+            "create",
+            "Link",
+            "--source",
+            &source,
+            "--output",
+            f.out.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 4, "{error}");
+    assert_eq!(error["reason_code"], "unsupported_source_symlink");
+}
+
+#[cfg(unix)]
+#[test]
+fn trailing_separators_cannot_hide_a_source_root_symlink() {
+    let f = Fixture::new();
+    let link = f._tmp.path().join("link");
+    std::os::unix::fs::symlink(&f.src, &link).unwrap();
+    for suffix in ["/", "/.", "//./"] {
+        let source = format!("Docs={}{}", link.display(), suffix);
+        let (code, error) = cli(
+            &f.home,
+            &[
+                "job",
+                "create",
+                "Link",
+                "--source",
+                &source,
+                "--output",
+                f.out.to_str().unwrap(),
+            ],
+        );
+        assert_eq!(code, 4, "{source}: {error}");
+        assert_eq!(error["reason_code"], "unsupported_source_symlink");
+    }
+}

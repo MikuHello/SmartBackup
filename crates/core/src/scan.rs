@@ -109,6 +109,7 @@ pub fn scan(job: &Job) -> Result<Scan> {
         let mut ignores: HashMap<PathBuf, Gitignore> = HashMap::new();
         let mut walk = walkdir::WalkDir::new(&source.path)
             .follow_links(false)
+            .follow_root_links(false)
             .same_file_system(!source.cross_filesystems)
             .sort_by_file_name()
             .into_iter();
@@ -119,14 +120,16 @@ pub fn scan(job: &Job) -> Result<Scan> {
             let relative = if path == source.path {
                 source.alias.clone()
             } else {
-                format!(
-                    "{}/{}",
-                    source.alias,
-                    path.strip_prefix(&source.path)?
+                let mut parts = vec![];
+                for part in path.strip_prefix(&source.path)?.components() {
+                    let part = part
+                        .as_os_str()
                         .to_str()
-                        .context("Non-UTF8 filenames unsupported")?
-                        .replace('\\', "/")
-                )
+                        .context("Non-UTF8 filenames unsupported")?;
+                    paths::safe_component(part)?;
+                    parts.push(part);
+                }
+                format!("{}/{}", source.alias, parts.join("/"))
             };
             paths::safe_entry(&relative)?;
             let dir = item.file_type().is_dir();

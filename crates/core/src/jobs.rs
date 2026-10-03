@@ -62,6 +62,7 @@ pub fn validate(job: &Job, home: &Path, check_available: bool) -> Result<()> {
             );
         }
         if check_available {
+            paths::source_candidate(&source.path)?;
             if !source.path.exists() && !source.required {
                 continue;
             }
@@ -116,7 +117,7 @@ pub fn create(
         let (alias, source) = value
             .split_once('=')
             .context("Source must use ALIAS=PATH syntax")?;
-        let source = paths::existing(Path::new(source))?;
+        let source = paths::existing(&paths::source_candidate(Path::new(source))?)?;
         result.push(Source {
             alias: alias.to_owned(),
             volume: paths::volume(&source)?,

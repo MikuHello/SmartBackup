@@ -227,3 +227,27 @@ pub fn rename_new(from: &Path, to: &Path) -> Result<()> {
     }
     Ok(())
 }
+
+/// Normalize separators and trailing `.` without following the last source component.
+/// lstat("link/") follows the target on Unix; lstat("link") does not.
+pub fn source_candidate(path: &Path) -> Result<PathBuf> {
+    if path.as_os_str().is_empty() {
+        return config("invalid_source", "Source path cannot be empty");
+    }
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let normalized: PathBuf = absolute
+        .components()
+        .filter(|c| !matches!(c, Component::CurDir))
+        .collect();
+    if fs::symlink_metadata(&normalized).is_ok_and(|m| m.file_type().is_symlink()) {
+        return config(
+            "unsupported_source_symlink",
+            "Source root links are unsupported; select a real file/directory. Links inside it are preserved.",
+        );
+    }
+    Ok(normalized)
+}
