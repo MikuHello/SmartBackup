@@ -84,3 +84,5 @@ cargo test --workspace
 ```
 
 测试从 CLI 接口观察行为，使用真实 7-Zip 和隔离临时文件。Windows/Linux CI 是待执行的构建配置，不能据此声称已在三平台通过。
+
+本次实测结果与双轴评审闭环见 [REVIEW.md](REVIEW.md)。

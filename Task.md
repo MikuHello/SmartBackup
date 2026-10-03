@@ -1,6 +1,6 @@
 # Smart Backup 技术规格与实施任务书
 
-> 状态：需求已对齐，等待交接实施  
+> 状态：正式版需求基线；已实现 CLI alpha 原型，实际能力与未完成项见 [docs/MVP.md](docs/MVP.md)  
 > 工作名称：Smart Backup  
 > CLI：`smart-backup`，简写 `sb`  
 > 文档日期：2026-09-08  
@@ -913,7 +913,7 @@ JSON 中同时提供稳定 `status`、`reason_code` 和可本地化 `message`。
 - Artifact 命名变量；
 - Job 导入/导出格式。
 
-Rust 应用从 `0.1.0` 开始。现有 BAT 的 `v1.0.0` 是历史脚本版本，不代表新应用 API 已稳定。
+Rust 应用以 `0.1.0` 为首个 CLI 版本目标；当前 `0.1.0-alpha.1` 的实际支持范围见 `docs/MVP.md`。
 
 ## 18. GUI、国际化与辅助功能
 

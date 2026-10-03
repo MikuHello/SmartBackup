@@ -1,6 +1,6 @@
 # Smart Backup CLI MVP
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 
