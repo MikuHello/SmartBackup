@@ -648,6 +648,62 @@ fn explicit_include_overrides_builtin_cache_tag_exclusion() {
     );
 }
 
+#[test]
+fn multiple_sources_keep_same_named_files_in_separate_aliases() {
+    let f = Fixture::new();
+    f.configure();
+    let second = f._tmp.path().join("second");
+    fs::create_dir(&second).unwrap();
+    fs::write(second.join("hello.txt"), "second source").unwrap();
+    let a = format!("First={}", f.src.display());
+    let b = format!("Second={}", second.display());
+    let (code, created) = cli(
+        &f.home,
+        &[
+            "job",
+            "create",
+            "Multi",
+            "--source",
+            &a,
+            "--source",
+            &b,
+            "--output",
+            f.out.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 0, "{created}");
+    let (_, run) = cli(&f.home, &["run", "Multi"]);
+    let archive = run["data"]["artifact"].as_str().unwrap();
+    let output = f._tmp.path().join("multi-restore");
+    let (code, result) = cli(
+        &f.home,
+        &["restore", archive, "--output", output.to_str().unwrap()],
+    );
+    assert_eq!(code, 0, "{result}");
+    assert_eq!(
+        fs::read_to_string(output.join("First/hello.txt")).unwrap(),
+        "hello world\n"
+    );
+    assert_eq!(
+        fs::read_to_string(output.join("Second/hello.txt")).unwrap(),
+        "second source"
+    );
+    let original = fs::metadata(f.src.join("hello.txt"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    let restored = fs::metadata(output.join("First/hello.txt"))
+        .unwrap()
+        .modified()
+        .unwrap();
+    assert!(
+        original.duration_since(restored).unwrap_or_default() < std::time::Duration::from_secs(1)
+    );
+    assert!(
+        restored.duration_since(original).unwrap_or_default() < std::time::Duration::from_secs(1)
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn trailing_separators_cannot_hide_a_source_root_symlink() {
