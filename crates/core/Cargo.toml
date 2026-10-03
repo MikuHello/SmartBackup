@@ -10,7 +10,6 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tempfile.workspace = true
-clap = { version = "4", features = ["derive"] }
 toml = "0.8"
 toml_edit = "0.22"
 rusqlite = { version = "0.32", features = ["bundled"] }

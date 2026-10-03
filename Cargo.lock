@@ -852,7 +852,6 @@ dependencies = [
  "anyhow",
  "caseless",
  "chrono",
- "clap",
  "ctrlc",
  "filetime",
  "fs2",
