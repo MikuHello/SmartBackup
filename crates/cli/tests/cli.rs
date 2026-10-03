@@ -1021,3 +1021,71 @@ fn engine_changed_during_capture_is_rejected_before_launch() {
             .all(|b| *b == 0)
     );
 }
+
+#[test]
+fn single_file_sources_obey_exclusions_and_explicit_includes() {
+    let f = Fixture::new();
+    f.configure();
+    for (name, alias, rule, include) in [
+        ("secret.env", "Env", Some("*.env"), "!secret.env"),
+        (".DS_Store", "Metadata", None, "!.DS_Store"),
+    ] {
+        let source = f.src.join(name);
+        fs::write(&source, b"fixture must be filtered").unwrap();
+        let source_arg = format!("{alias}={}", source.display());
+        let mut args = vec![
+            "job",
+            "create",
+            alias,
+            "--source",
+            &source_arg,
+            "--output",
+            f.out.to_str().unwrap(),
+        ];
+        if let Some(rule) = rule {
+            args.extend(["--rule", rule]);
+        }
+        assert_eq!(cli(&f.home, &args).0, 0);
+        let (code, preview) = cli(&f.home, &["run", alias, "--dry-run"]);
+        assert_eq!(code, 0, "{preview}");
+        assert_eq!(preview["data"]["files"], 0);
+        assert_eq!(preview["data"]["excluded"][0]["path"], alias);
+        let (code, run) = cli(&f.home, &["run", alias]);
+        assert_eq!(code, 0, "{run}");
+        let (code, listing) = cli(
+            &f.home,
+            &["archive", "list", run["data"]["artifact"].as_str().unwrap()],
+        );
+        assert_eq!(code, 0, "{listing}");
+        assert!(
+            !listing["data"]["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["path"] == alias)
+        );
+        assert_eq!(cli(&f.home, &["run", alias]).1["reason_code"], "no_changes");
+        let mut args = vec!["job", "edit", alias];
+        if let Some(rule) = rule {
+            args.extend(["--rule", rule]);
+        }
+        args.extend(["--rule", include]);
+        assert_eq!(cli(&f.home, &args).0, 0);
+        let (_, preview) = cli(&f.home, &["run", alias, "--dry-run"]);
+        assert_eq!(preview["data"]["files"], 1);
+        let (code, run) = cli(&f.home, &["run", alias]);
+        assert_eq!(code, 0, "{run}");
+        let (_, listing) = cli(
+            &f.home,
+            &["archive", "list", run["data"]["artifact"].as_str().unwrap()],
+        );
+        assert!(
+            listing["data"]["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["path"] == alias)
+        );
+        assert_eq!(fs::read(&source).unwrap(), b"fixture must be filtered");
+    }
+}

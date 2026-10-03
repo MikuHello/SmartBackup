@@ -176,7 +176,8 @@ pub fn scan(job: &Job) -> Result<Scan> {
             if let Some(value) = decision(&inline, path, dir) {
                 matched = Some(value);
             }
-            if (path != source.path || is_cache)
+            // Directory roots anchor the alias; a file root is still a filterable entry.
+            if (!dir || path != source.path || is_cache)
                 && let Some((true, rule)) = matched
             {
                 result.excluded.push(Excluded {
