@@ -14,7 +14,7 @@ Single-context: `GLOSSARY.md` and `docs/adr/`; see `docs/agents/domain.md`.
 
 ### Workflow
 
-Project-local Matt Pocock skills are in `.agents/skills/` (see `docs/agents/skills-lock.json`). Follow spec → vertical slices → red/green TDD at the CLI interface → standards/spec review. Task.md T01–T08 are the existing implementation breakdown. User approved CLI test seams and the initial repository baseline on 2026-10-03. Do not use subagents unnecessarily; the two independent final review agents required by code-review are permitted. No automatic push or remote publishing.
+Project-local Matt Pocock skills are in `.agents/skills/` (see `docs/agents/skills-lock.json`). Follow spec → vertical slices → red/green TDD at the CLI interface → standards/spec review. Task.md defines the implementation breakdown. The public CLI is the agreed integration-test seam. Do not use subagents unnecessarily; the two independent final review agents required by code-review are permitted. No automatic push or remote publishing.
 
 ## Validation
 

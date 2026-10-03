@@ -4,7 +4,7 @@
 
 ## 运行
 
-环境需要 Rust（支持 edition 2024 和 let-chains；建议当前 stable）和 7-Zip。引擎必须显式选定，程序会固定其 SHA-256，每次加载时验证；升级 7-Zip 后需要重新配置。
+环境需要 Rust（支持 edition 2024 和 let-chains；建议当前 stable）和 7-Zip。引擎必须显式选定，程序会固定其 SHA-256，每次加载和启动引擎前验证；升级 7-Zip 后需要重新配置。
 
 ```sh
 cargo build --release
@@ -84,5 +84,3 @@ cargo test --workspace
 ```
 
 测试从 CLI 接口观察行为，使用真实 7-Zip 和隔离临时文件。Windows/Linux CI 是待执行的构建配置，不能据此声称已在三平台通过。
-
-本次实测结果与双轴评审闭环见 [REVIEW.md](REVIEW.md)。
