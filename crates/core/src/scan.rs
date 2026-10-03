@@ -10,6 +10,7 @@ use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
     fs,
+    io::Read,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
 };
@@ -133,7 +134,12 @@ pub fn scan(job: &Job) -> Result<Scan> {
             };
             paths::safe_entry(&relative)?;
             let dir = item.file_type().is_dir();
-            let mut matched = decision(&builtin, path, dir);
+            let is_cache = job.filters.builtin && dir && has_cache_tag(path);
+            let mut matched = if is_cache {
+                Some((true, "CACHEDIR.TAG cache directory".into()))
+            } else {
+                decision(&builtin, path, dir)
+            };
             if job.filters.follow_gitignore {
                 let mut ancestors: Vec<&Path> = path
                     .parent()
@@ -170,7 +176,7 @@ pub fn scan(job: &Job) -> Result<Scan> {
             if let Some(value) = decision(&inline, path, dir) {
                 matched = Some(value);
             }
-            if path != source.path
+            if (path != source.path || is_cache)
                 && let Some((true, rule)) = matched
             {
                 result.excluded.push(Excluded {
@@ -180,19 +186,6 @@ pub fn scan(job: &Job) -> Result<Scan> {
                 if dir {
                     walk.skip_current_dir();
                 }
-                continue;
-            }
-            if job.filters.builtin
-                && dir
-                && fs::read(path.join("CACHEDIR.TAG")).is_ok_and(|data| {
-                    data.starts_with(b"Signature: 8a477f597d28d172789f06886806bc55")
-                })
-            {
-                result.excluded.push(Excluded {
-                    path: relative,
-                    reason: "CACHEDIR.TAG cache directory".into(),
-                });
-                walk.skip_current_dir();
                 continue;
             }
             if !names.insert(paths::key(&relative)) {
@@ -245,4 +238,24 @@ pub fn scan(job: &Job) -> Result<Scan> {
         &job.sources,
     ))?);
     Ok(result)
+}
+
+fn has_cache_tag(directory: &Path) -> bool {
+    let path = directory.join("CACHEDIR.TAG");
+    if !fs::symlink_metadata(&path).is_ok_and(|m| m.is_file()) {
+        return false;
+    }
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    let Ok(mut file) = options.open(path) else {
+        return false;
+    };
+    let expected = b"Signature: 8a477f597d28d172789f06886806bc55";
+    let mut actual = [0u8; 43];
+    file.read_exact(&mut actual).is_ok() && &actual == expected
 }

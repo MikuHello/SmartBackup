@@ -592,6 +592,62 @@ fn nonportable_source_names_and_root_symlinks_fail_explicitly() {
     assert_eq!(error["reason_code"], "unsupported_source_symlink");
 }
 
+#[test]
+fn explicit_include_overrides_builtin_cache_tag_exclusion() {
+    let f = Fixture::new();
+    f.configure();
+    let cache = f.src.join("cache");
+    fs::create_dir(&cache).unwrap();
+    fs::write(
+        cache.join("CACHEDIR.TAG"),
+        "Signature: 8a477f597d28d172789f06886806bc55\n",
+    )
+    .unwrap();
+    fs::write(cache.join("important.txt"), "include this explicitly").unwrap();
+    let (_, before) = cli(&f.home, &["run", "Daily", "--dry-run"]);
+    assert!(
+        before["data"]["excluded"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["path"] == "Documents/cache")
+    );
+    let (code, edit) = cli(
+        &f.home,
+        &[
+            "job",
+            "edit",
+            "Daily",
+            "--rule",
+            "!cache/",
+            "--rule",
+            "!cache/**",
+        ],
+    );
+    assert_eq!(code, 0, "{edit}");
+    let (_, preview) = cli(&f.home, &["run", "Daily", "--dry-run"]);
+    assert!(
+        preview["data"]["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["path"] == "Documents/cache/important.txt"),
+        "{preview}"
+    );
+    let (_, run) = cli(&f.home, &["run", "Daily"]);
+    let (_, listing) = cli(
+        &f.home,
+        &["archive", "list", run["data"]["artifact"].as_str().unwrap()],
+    );
+    assert!(
+        listing["data"]["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["path"] == "Documents/cache/important.txt")
+    );
+}
+
 #[cfg(unix)]
 #[test]
 fn trailing_separators_cannot_hide_a_source_root_symlink() {
