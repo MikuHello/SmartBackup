@@ -1,0 +1,16 @@
+[package]
+name = "smart-backup"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+smart-backup-core = { path = "../core" }
+clap = { version = "4", features = ["derive"] }
+serde_json.workspace = true
+anyhow.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+serde_json.workspace = true

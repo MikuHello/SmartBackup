@@ -2,9 +2,21 @@
 
 Smart Backup 是一个面向个人用户和开发者的跨平台文件备份工具。它把一个或多个文件/目录保存为新的、不可变的标准压缩快照，并提供变化检测、校验、历史、调度和安全恢复。
 
-> 当前状态：需求规格已完成，尚未开始新应用实现。仓库中的 BAT 是历史原型；Rust 应用将从 `0.1.0` 开始。
+> 当前状态：已实现 `0.1.0-alpha.1` CLI 原型，核心流程已在 macOS 实跑。历史 BAT 已移除。完整桌面版尚未实现；能力边界见 [MVP 使用说明](docs/MVP.md)。
 
 完整需求、架构、安全边界、任务依赖和验收标准见 [`Task.md`](./Task.md)。
+
+## 立即体验 CLI MVP
+
+```sh
+cargo build --release
+./target/release/smart-backup --help
+python3 scripts/demo.py
+```
+
+需要已安装的 7-Zip（`7zz` / `7z`）。演示只使用自动生成的示例资料，完整执行备份、验证和恢复。实际使用方法、支持范围与退出码见 [docs/MVP.md](docs/MVP.md)。
+
+本项目已配置 [Matt Pocock skills](https://github.com/mattpocock/skills)，版本锁定与流程记录位于 [docs/agents/](docs/agents/workflow.md)。以下路线图保留正式发行的验收目标，不把原型能力等同于完整交付。
 
 ## 为什么做
 
@@ -120,10 +132,6 @@ Smart Backup 是一个面向个人用户和开发者的跨平台文件备份工�
 - 私有去重仓库或增量链恢复；
 - 首版 pre/post hooks；
 - 自动追踪用户手动移动、改名或删除的归档。
-
-## 历史原型
-
-[`7z_auto_backup_smart v1.0.0.bat`](./7z_auto_backup_smart%20v1.0.0.bat) 是 Windows CMD 原型，只用于参考早期交互和 7-Zip 参数组织。它不是新架构的实现基线，新项目不会继承其同名归档滚动更新行为。
 
 ## 开始实施前
 

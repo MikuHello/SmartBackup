@@ -1,0 +1,5 @@
+/target/
+/.demo/
+.DS_Store
+*.log
+/.ci/
