@@ -1136,3 +1136,101 @@ fn normal_startup_interrupts_abandoned_runs_but_dry_run_stays_read_only() {
     );
     assert_eq!(fs::read(artifact).unwrap(), artifact_bytes);
 }
+
+#[test]
+fn creating_state_does_not_materialize_cancelled_source_path_components() {
+    let temp = TempDir::new().unwrap();
+    let source = temp.path().join("source");
+    let output = temp.path().join("output");
+    fs::create_dir(&source).unwrap();
+    fs::create_dir(&output).unwrap();
+    fs::write(source.join("keep.txt"), b"unchanged").unwrap();
+    let before = tree_snapshot(&source);
+    let home = source.join("new/../../state");
+    let (code, result) = cli(
+        &home,
+        &[
+            "job",
+            "create",
+            "Safe",
+            "--source",
+            &format!("Docs={}", source.display()),
+            "--output",
+            output.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(code, 0, "{result}");
+    assert!(
+        tree_snapshot(&source) == before,
+        "Startup created a cancelled path component inside the source"
+    );
+    assert!(temp.path().join("state/state.db").is_file());
+    let (code, shown) = cli(&temp.path().join("state"), &["job", "show", "Safe"]);
+    assert_eq!(code, 0, "{shown}");
+    assert_eq!(shown["data"]["id"], result["data"]["id"]);
+    let (code, configured) = cli(&home, &["engine", "configure", "--path", &engine()]);
+    assert_eq!(code, 0, "{configured}");
+    let state_before = tree_snapshot(&temp.path().join("state"));
+    let (code, preview) = cli(&home, &["run", "Safe", "--dry-run"]);
+    assert_eq!(code, 0, "{preview}");
+    assert_eq!(preview["data"]["files"], 1);
+    assert!(tree_snapshot(&temp.path().join("state")) == state_before);
+    assert!(tree_snapshot(&source) == before);
+}
+
+#[test]
+fn missing_parent_components_cannot_hide_configured_source_overlap() {
+    let f = Fixture::new();
+    let home = f.src.join("state");
+    fs::rename(&f.home, &home).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&home, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let before = tree_snapshot(&f.src);
+    let alias = f.src.join("missing/../state");
+    for args in [
+        vec!["history", "list"],
+        vec!["job", "list"],
+        vec!["config", "validate"],
+        vec!["run", "Daily"],
+        vec!["run", "Daily", "--dry-run"],
+    ] {
+        let (code, error) = cli(&alias, &args);
+        assert_eq!(code, 4, "{args:?}: {error}");
+        assert_eq!(error["reason_code"], "state_inside_source");
+        assert!(
+            tree_snapshot(&f.src) == before,
+            "Rejected startup changed the source tree"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                fs::metadata(&home).unwrap().permissions().mode() & 0o777,
+                0o755
+            );
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn resolving_state_paths_preserves_rejection_of_a_linked_home() {
+    let temp = TempDir::new().unwrap();
+    let state = temp.path().join("state");
+    fs::create_dir(&state).unwrap();
+    fs::write(state.join("keep.txt"), b"unchanged").unwrap();
+    std::os::unix::fs::symlink(&state, temp.path().join("alias")).unwrap();
+    let before = tree_snapshot(temp.path());
+    for path in [
+        temp.path().join("alias"),
+        temp.path().join("missing/../alias"),
+    ] {
+        let (code, error) = cli(&path, &["job", "list"]);
+        assert_eq!(code, 5, "{error}");
+        assert_eq!(error["reason_code"], "unsafe_state_directory");
+        assert!(tree_snapshot(temp.path()) == before);
+    }
+}

@@ -25,11 +25,23 @@ pub struct App {
 }
 impl App {
     pub fn open(home: &Path) -> Result<Self> {
-        Self::open_mode(home, false)
+        Self::open_mode(home, false, &[])
     }
     /// Open for Job creation, checking proposed sources before initializing state.
     pub fn open_with_sources(home: &Path, sources: &[String]) -> Result<Self> {
-        let resolved_home = paths::prospective(home)?;
+        Self::open_mode(home, false, sources)
+    }
+    pub fn open_read_only(home: &Path) -> Result<Self> {
+        Self::open_mode(home, true, &[])
+    }
+    fn open_mode(home: &Path, read_only: bool, sources: &[String]) -> Result<Self> {
+        // Use this same resolved path for validation, configuration reads and writes.
+        // The original spelling may contain missing components followed by `..`.
+        let home = if read_only {
+            paths::prospective(home)?
+        } else {
+            paths::state_home(home)?
+        };
         for value in sources {
             let (_, source) = value.split_once('=').ok_or_else(|| error::Failure {
                 exit: 4,
@@ -37,28 +49,21 @@ impl App {
                 message: "Source must use ALIAS=PATH syntax".into(),
             })?;
             let source = paths::source_candidate(Path::new(source))?;
-            paths::check_state_source(&resolved_home, &source)?;
+            paths::check_state_source(&home, &source)?;
         }
-        Self::open(home)
-    }
-    pub fn open_read_only(home: &Path) -> Result<Self> {
-        Self::open_mode(home, true)
-    }
-    fn open_mode(home: &Path, read_only: bool) -> Result<Self> {
         // Inspect all configured sources before chmod, lock creation, or SQLite recovery.
         // Startup writes can otherwise modify a source even when Run later rejects it.
-        let resolved_home = paths::prospective(home)?;
         if home.join("jobs").try_exists()? {
-            for job in jobs::list(home)?.0 {
+            for job in jobs::list(&home)?.0 {
                 for source in &job.sources {
-                    paths::check_state_source(&resolved_home, &source.path)?;
+                    paths::check_state_source(&home, &source.path)?;
                 }
             }
         }
         if !read_only {
-            paths::private_dir(home)?;
+            paths::private_dir(&home)?;
         }
-        let home = paths::existing(home)?;
+        let home = paths::existing(&home)?;
         let lock = OpenOptions::new()
             .create(!read_only)
             .truncate(false)

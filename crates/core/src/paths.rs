@@ -70,6 +70,22 @@ pub fn prospective(path: &Path) -> Result<PathBuf> {
     }
     Ok(resolved)
 }
+/// Resolve the writable state location without relaxing the ban on a linked home.
+pub fn state_home(path: &Path) -> Result<PathBuf> {
+    let absolute = std::path::absolute(path)?;
+    if let (Some(parent), Some(name)) = (absolute.parent(), absolute.file_name()) {
+        // Resolve missing/parent components before checking the final component.
+        let candidate = prospective(parent)?.join(name);
+        if fs::symlink_metadata(&candidate).is_ok_and(|m| m.file_type().is_symlink()) {
+            return fail(
+                5,
+                "unsafe_state_directory",
+                "State/staging path must be a real directory",
+            );
+        }
+    }
+    prospective(&absolute)
+}
 pub fn check_state_source(home: &Path, source: &Path) -> Result<()> {
     let source = prospective(source)?;
     if home.starts_with(&source) {
