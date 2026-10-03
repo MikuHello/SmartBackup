@@ -543,3 +543,17 @@ fn safe_relative_symlink_restores_but_escaping_link_does_not() {
     assert_ne!(code, 0);
     assert!(!output.exists());
 }
+
+#[test]
+fn dry_run_does_not_rebuild_or_mutate_a_damaged_history_database() {
+    let f = Fixture::new();
+    f.configure();
+    fs::write(f.home.join("state.db"), b"diagnostic evidence").unwrap();
+    let (code, error) = cli(&f.home, &["run", "Daily", "--dry-run"]);
+    assert_eq!(code, 5, "{error}");
+    assert_eq!(error["reason_code"], "database_corrupt");
+    assert_eq!(
+        fs::read(f.home.join("state.db")).unwrap(),
+        b"diagnostic evidence"
+    );
+}

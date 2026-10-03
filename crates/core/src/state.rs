@@ -1,4 +1,8 @@
-use crate::{error::config, model::Run, paths};
+use crate::{
+    error::{config, fail},
+    model::Run,
+    paths,
+};
 use anyhow::Result;
 use chrono::Utc;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -13,10 +17,16 @@ pub struct State {
     db: Connection,
 }
 impl State {
-    pub fn open(home: &Path) -> Result<Self> {
-        paths::private_dir(&home.join("logs"))?;
+    pub fn open(home: &Path, read_only: bool) -> Result<Self> {
+        if !read_only {
+            paths::private_dir(&home.join("logs"))?;
+        }
         let path = home.join("state.db");
-        let mut db = Connection::open(&path)?;
+        let mut db = if read_only {
+            Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?
+        } else {
+            Connection::open(&path)?
+        };
         let check = db.query_row("PRAGMA quick_check", [], |row| row.get::<_, String>(0));
         let corrupt = match check {
             Ok(value) => value != "ok",
@@ -31,6 +41,13 @@ impl State {
             Err(error) => return Err(error.into()),
         };
         if corrupt {
+            if read_only {
+                return fail(
+                    5,
+                    "database_corrupt",
+                    "History database is damaged; Dry Run will not rebuild it. A normal operation can preserve and rebuild it.",
+                );
+            }
             drop(db);
             let suffix = Uuid::new_v4();
             fs::rename(&path, home.join(format!("state.corrupt-{suffix}.db")))?;
@@ -49,7 +66,9 @@ impl State {
                 "Database was created by a newer application",
             );
         }
-        db.execute_batch("PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, job_id TEXT NOT NULL, status TEXT NOT NULL, started_at TEXT NOT NULL, fingerprint TEXT, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS runs_job ON runs(job_id,started_at); PRAGMA user_version=1;")?;
+        if !read_only && version == 0 {
+            db.execute_batch("PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, job_id TEXT NOT NULL, status TEXT NOT NULL, started_at TEXT NOT NULL, fingerprint TEXT, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS runs_job ON runs(job_id,started_at); PRAGMA user_version=1;")?;
+        }
         Ok(Self { db })
     }
     pub fn interrupt_abandoned(&self) -> Result<()> {

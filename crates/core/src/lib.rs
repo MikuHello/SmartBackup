@@ -25,10 +25,18 @@ pub struct App {
 }
 impl App {
     pub fn open(home: &Path) -> Result<Self> {
-        paths::private_dir(home)?;
+        Self::open_mode(home, false)
+    }
+    pub fn open_read_only(home: &Path) -> Result<Self> {
+        Self::open_mode(home, true)
+    }
+    fn open_mode(home: &Path, read_only: bool) -> Result<Self> {
+        if !read_only {
+            paths::private_dir(home)?;
+        }
         let home = paths::existing(home)?;
         let lock = OpenOptions::new()
-            .create(true)
+            .create(!read_only)
             .truncate(false)
             .read(true)
             .write(true)
@@ -38,8 +46,10 @@ impl App {
             reason: "busy",
             message: "Another Smart Backup operation is active".into(),
         })?;
-        paths::private_dir(&home.join("jobs"))?;
-        let state = state::State::open(&home)?;
+        if !read_only {
+            paths::private_dir(&home.join("jobs"))?;
+        }
+        let state = state::State::open(&home, read_only)?;
         Ok(Self {
             home,
             _lock: lock,

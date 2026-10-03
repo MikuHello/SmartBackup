@@ -234,8 +234,15 @@ fn main() -> ExitCode {
                 .join(".local/share/smart-backup")
         }
     });
+    let read_only = matches!(&cli.command, Command::Run { dry_run: true, .. });
     let result = smart_backup_core::install_cancel_handler()
-        .and_then(|_| App::open(&home))
+        .and_then(|_| {
+            if read_only {
+                App::open_read_only(&home)
+            } else {
+                App::open(&home)
+            }
+        })
         .and_then(|app| execute(&app, cli.command));
     let (code, value) = match result {
         Ok(data) => {
