@@ -41,7 +41,9 @@ fn job_can_be_created_and_read_back_with_unique_aliases() {
     );
     assert_eq!(code, 0, "{created}");
     assert_eq!(created["data"]["name"], "Daily");
-    let (_, shown) = cli(&tmp.path().join("state"), &["job", "show", "daily"]);
+    let home = fs::canonicalize(tmp.path().join("state")).unwrap();
+    let (code, shown) = cli(&home, &["job", "show", "daily"]);
+    assert_eq!(code, 0, "{shown}");
     assert_eq!(shown["data"]["id"], created["data"]["id"]);
     assert_eq!(shown["data"]["sources"][0]["alias"], "Documents");
 }

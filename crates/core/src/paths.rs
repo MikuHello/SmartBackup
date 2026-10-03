@@ -56,6 +56,11 @@ pub fn prospective(path: &Path) -> Result<PathBuf> {
     let mut resolved = PathBuf::new();
     for component in absolute.components() {
         match component {
+            Component::Prefix(_) => {
+                // A Windows device/drive prefix is not a complete path until RootDir.
+                resolved.push(component.as_os_str());
+                continue;
+            }
             Component::CurDir => continue,
             Component::ParentDir => {
                 resolved.pop();
