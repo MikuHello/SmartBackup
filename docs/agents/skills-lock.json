@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/mattpocock/skills",
+  "revision": "d81f3a183412e71a5b1e84ca21bc1a35eea03a60",
+  "skills": [
+    "ask-matt",
+    "code-review",
+    "codebase-design",
+    "diagnosing-bugs",
+    "domain-modeling",
+    "grill-with-docs",
+    "grilling",
+    "implement",
+    "setup-matt-pocock-skills",
+    "tdd",
+    "to-spec",
+    "to-tickets",
+    "writing-for-agents"
+  ],
+  "installed_at": "2026-10-03",
+  "installation": "skill-installer --dest .agents/skills"
+}
