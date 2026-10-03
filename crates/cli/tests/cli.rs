@@ -704,6 +704,26 @@ fn multiple_sources_keep_same_named_files_in_separate_aliases() {
     );
 }
 
+#[test]
+fn changed_engine_hash_blocks_run_and_records_failure() {
+    let f = Fixture::new();
+    f.configure();
+    let path = f.home.join("config.toml");
+    let text = fs::read_to_string(&path).unwrap();
+    let line = text.lines().find(|l| l.starts_with("sha256 = ")).unwrap();
+    fs::write(
+        &path,
+        text.replace(line, &format!("sha256 = \"{}\"", "0".repeat(64))),
+    )
+    .unwrap();
+    let (code, error) = cli(&f.home, &["run", "Daily"]);
+    assert_eq!(code, 5, "{error}");
+    assert_eq!(error["reason_code"], "engine_hash_mismatch");
+    let (_, history) = cli(&f.home, &["history", "list"]);
+    assert_eq!(history["data"]["runs"][0]["status"], "failed");
+    assert_eq!(fs::read_dir(&f.out).unwrap().count(), 0);
+}
+
 #[cfg(unix)]
 #[test]
 fn trailing_separators_cannot_hide_a_source_root_symlink() {
