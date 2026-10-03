@@ -1,0 +1,18 @@
+{
+  "version": "26.03",
+  "source": "https://www.7-zip.org/download.html",
+  "assets": {
+    "win32": {
+      "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-extra.7z",
+      "sha256": "191894e6acb3647ffb69ce630479ff318523b2e2b9890aa7f05c1127c2e59b8f"
+    },
+    "linux": {
+      "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-linux-x64.tar.xz",
+      "sha256": "dc99eff5008f1ab79bd7084c68513701547a808a89502bf4133683535ab3c695"
+    },
+    "darwin": {
+      "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-mac.tar.xz",
+      "sha256": "5ca87677072c59f5602e5c49baa27d4694bacd2259b4e507f0094249d4281480"
+    }
+  }
+}

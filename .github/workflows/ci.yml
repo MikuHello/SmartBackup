@@ -1,0 +1,35 @@
+name: CLI validation
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  cli:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned official test engine
+        run: python scripts/install-test-engine.py
+      - name: Prepare UUID-backed Linux test volume
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          truncate -s 1G /tmp/smart-backup-tests.img
+          sudo mkfs.ext4 -F /tmp/smart-backup-tests.img
+          sudo mkdir -p /mnt/smart-backup-tests
+          sudo mount -o loop /tmp/smart-backup-tests.img /mnt/smart-backup-tests
+          sudo chmod 1777 /mnt/smart-backup-tests
+          echo 'TMPDIR=/mnt/smart-backup-tests' >> "$GITHUB_ENV"
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --locked
+      - run: cargo build --release --locked
