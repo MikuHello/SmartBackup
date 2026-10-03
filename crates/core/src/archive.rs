@@ -246,7 +246,8 @@ pub fn snapshot(engine: &Engine, job: &Job, scan: &Scan, mut run: Run) -> Result
         ],
         None,
     )?;
-    File::open(&partial)?.sync_all()?;
+    // Windows requires write access to flush the newly created staging archive.
+    OpenOptions::new().write(true).open(&partial)?.sync_all()?;
     let hash = engine::hash(&partial)?;
     let sidecar = temp.path().join(format!("{archive_name}.sha256"));
     jobs::write_new(&sidecar, format!("{hash}  {archive_name}\n").as_bytes())?;
