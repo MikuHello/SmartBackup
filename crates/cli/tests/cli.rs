@@ -897,15 +897,34 @@ struct PausedRun(Option<std::process::Child>);
 
 #[cfg(unix)]
 impl PausedRun {
-    fn during_capture(f: &Fixture) -> Self {
+    fn after_archive_creation(f: &Fixture) -> Self {
         use std::{
+            os::unix::fs::PermissionsExt,
             process::Stdio,
             time::{Duration, Instant},
         };
-        fs::File::create(f.src.join("large.bin"))
-            .unwrap()
-            .set_len(64 * 1024 * 1024)
-            .unwrap();
+        let (code, configured) = cli(&f.home, &["engine", "configure", "--path", &engine()]);
+        assert_eq!(code, 0, "{configured}");
+        fs::copy(
+            configured["data"]["path"].as_str().unwrap(),
+            f._tmp.path().join("7zz-real"),
+        )
+        .unwrap();
+        // Run the real engine, then stop the CLI before returning from archive creation.
+        // The marker acknowledges SIGSTOP; polling cannot miss this pause.
+        let wrapper = f._tmp.path().join("7zz-pausing");
+        fs::write(
+            &wrapper,
+            b"#!/bin/sh\nengine_dir=${0%/*}\n\"$engine_dir/7zz-real\" \"$@\"\nresult=$?\nif [ \"$1\" = a ] && [ \"$result\" = 0 ]; then\n  kill -STOP \"$PPID\" || exit 1\n  touch \"$engine_dir/engine-paused\"\nfi\nexit \"$result\"\n",
+        )
+        .unwrap();
+        fs::set_permissions(&wrapper, fs::Permissions::from_mode(0o755)).unwrap();
+        let (code, configured) = cli(
+            &f.home,
+            &["engine", "configure", "--path", wrapper.to_str().unwrap()],
+        );
+        assert_eq!(code, 0, "{configured}");
+        fs::write(f.src.join("added.txt"), b"new snapshot fixture").unwrap();
         let child = Command::new(env!("CARGO_BIN_EXE_smart-backup"))
             .args(["--home", f.home.to_str().unwrap(), "--json", "run", "Daily"])
             .stdout(Stdio::piped())
@@ -915,26 +934,14 @@ impl PausedRun {
         let mut run = Self(Some(child));
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
-            let capture = fs::read_dir(f.out.join(".smart-backup-staging"))
-                .ok()
-                .into_iter()
-                .flatten()
-                .flatten()
-                .map(|e| e.path().join("capture"))
-                .find(|p| p.is_dir());
-            if let Some(capture) = capture {
-                run.signal("-STOP");
-                assert!(
-                    !capture.join(".smart-backup").exists(),
-                    "Missed the capture window"
-                );
+            if f._tmp.path().join("engine-paused").exists() {
                 return run;
             }
             assert!(
                 run.0.as_mut().unwrap().try_wait().unwrap().is_none(),
-                "Run exited before capture"
+                "Run exited before engine pause"
             );
-            assert!(Instant::now() < deadline, "Run did not reach capture");
+            assert!(Instant::now() < deadline, "Run did not reach engine pause");
             std::thread::sleep(Duration::from_millis(1));
         }
     }
@@ -970,34 +977,16 @@ impl Drop for PausedRun {
 
 #[cfg(unix)]
 #[test]
-fn engine_changed_during_capture_is_rejected_before_launch() {
+fn engine_changed_between_calls_is_rejected_before_next_launch() {
     use std::io::Write;
     let f = Fixture::new();
-    let (code, configured) = cli(&f.home, &["engine", "configure", "--path", &engine()]);
-    assert_eq!(code, 0, "{configured}");
-    let original = configured["data"]["path"].as_str().unwrap();
-    let copy = f._tmp.path().join("7zz-copy");
-    fs::copy(original, &copy).unwrap();
-    assert_eq!(
-        cli(
-            &f.home,
-            &["engine", "configure", "--path", copy.to_str().unwrap()]
-        )
-        .0,
-        0
-    );
-    let child = PausedRun::during_capture(&f);
-    let replacement = f._tmp.path().join("7zz-replacement");
-    fs::copy(original, &replacement).unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(&replacement, fs::Permissions::from_mode(0o755)).unwrap();
+    let child = PausedRun::after_archive_creation(&f);
     fs::OpenOptions::new()
         .append(true)
-        .open(&replacement)
+        .open(f._tmp.path().join("7zz-pausing"))
         .unwrap()
-        .write_all(b"\nchanged engine fixture\n")
+        .write_all(b"\n# changed engine fixture\n")
         .unwrap();
-    fs::rename(replacement, &copy).unwrap();
     child.signal("-CONT");
     let result = child.finish();
     let error: Value = serde_json::from_slice(&result.stdout).unwrap();
@@ -1016,11 +1005,9 @@ fn engine_changed_during_capture_is_rejected_before_launch() {
             .any(|e| e.path().extension().is_some_and(|x| x == "7z"))
     );
     assert_eq!(fs::read(f.src.join("hello.txt")).unwrap(), b"hello world\n");
-    assert!(
-        fs::read(f.src.join("large.bin"))
-            .unwrap()
-            .iter()
-            .all(|b| *b == 0)
+    assert_eq!(
+        fs::read(f.src.join("added.txt")).unwrap(),
+        b"new snapshot fixture"
     );
 }
 
@@ -1102,7 +1089,7 @@ fn normal_startup_interrupts_abandoned_runs_but_dry_run_stays_read_only() {
     let completed = &completed["data"];
     let artifact = Path::new(completed["artifact"].as_str().unwrap());
     let artifact_bytes = fs::read(artifact).unwrap();
-    let child = PausedRun::during_capture(&f);
+    let child = PausedRun::after_archive_creation(&f);
     // A live owner must not be misclassified by a competing startup.
     let (code, busy) = cli(&f.home, &["history", "list"]);
     assert_eq!(code, 5, "{busy}");
