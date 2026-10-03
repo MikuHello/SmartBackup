@@ -74,6 +74,10 @@ impl App {
             paths::private_dir(&home.join("jobs"))?;
         }
         let state = state::State::open(&home, read_only)?;
+        if !read_only {
+            // The exclusive application lock proves no other managed Run owns state.
+            state.interrupt_abandoned()?;
+        }
         Ok(Self {
             home,
             _lock: lock,
@@ -138,7 +142,6 @@ impl App {
         for source in &job.sources {
             paths::check_state_source(&self.home, &source.path)?;
         }
-        self.state.interrupt_abandoned()?;
         let mut run = archive::new_run(&job);
         self.state.save(&run)?;
         state::event(&self.home, &run, "preflight")?;

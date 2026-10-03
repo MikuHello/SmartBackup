@@ -69,16 +69,27 @@ impl State {
         if !read_only && version == 0 {
             db.execute_batch("PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, job_id TEXT NOT NULL, status TEXT NOT NULL, started_at TEXT NOT NULL, fingerprint TEXT, payload TEXT NOT NULL); CREATE INDEX IF NOT EXISTS runs_job ON runs(job_id,started_at); PRAGMA user_version=1;")?;
         }
+        if !read_only {
+            db.execute_batch(
+                "CREATE INDEX IF NOT EXISTS runs_running ON runs(status) WHERE status='running';",
+            )?;
+        }
         Ok(Self { db })
     }
     pub fn interrupt_abandoned(&self) -> Result<()> {
-        for mut run in self.list(None)? {
-            if run.status == "running" {
-                run.status = "interrupted".into();
-                run.reason_code = "process_interrupted".into();
-                run.finished_at = Some(Utc::now().to_rfc3339());
-                self.save(&run)?;
-            }
+        // Startup needs only unfinished Runs, not sorted/deserialized complete history.
+        let mut statement = self
+            .db
+            .prepare("SELECT payload FROM runs WHERE status='running'")?;
+        let rows = statement.query_map([], |r| r.get::<_, String>(0))?;
+        let runs: Result<Vec<Run>> = rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect();
+        let runs = runs?;
+        drop(statement);
+        for mut run in runs {
+            run.status = "interrupted".into();
+            run.reason_code = "process_interrupted".into();
+            run.finished_at = Some(Utc::now().to_rfc3339());
+            self.save(&run)?;
         }
         Ok(())
     }

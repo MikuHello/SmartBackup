@@ -1089,3 +1089,50 @@ fn single_file_sources_obey_exclusions_and_explicit_includes() {
         assert_eq!(fs::read(&source).unwrap(), b"fixture must be filtered");
     }
 }
+
+#[cfg(unix)]
+#[test]
+fn normal_startup_interrupts_abandoned_runs_but_dry_run_stays_read_only() {
+    let f = Fixture::new();
+    f.configure();
+    let (code, completed) = cli(&f.home, &["run", "Daily"]);
+    assert_eq!(code, 0, "{completed}");
+    let completed = &completed["data"];
+    let artifact = Path::new(completed["artifact"].as_str().unwrap());
+    let artifact_bytes = fs::read(artifact).unwrap();
+    let child = PausedRun::during_capture(&f);
+    // A live owner must not be misclassified by a competing startup.
+    let (code, busy) = cli(&f.home, &["history", "list"]);
+    assert_eq!(code, 5, "{busy}");
+    assert_eq!(busy["reason_code"], "busy");
+    child.signal("-KILL");
+    assert!(!child.finish().status.success());
+    let before = tree_snapshot(&f.home);
+    let (code, preview) = cli(&f.home, &["run", "Daily", "--dry-run"]);
+    assert_eq!(code, 0, "{preview}");
+    assert!(
+        tree_snapshot(&f.home) == before,
+        "Dry Run changed abandoned history"
+    );
+    let (code, history) = cli(&f.home, &["history", "list"]);
+    assert_eq!(code, 0, "{history}");
+    let runs = history["data"]["runs"].as_array().unwrap();
+    assert_eq!(runs.len(), 2);
+    let interrupted = runs.iter().find(|r| r["id"] != completed["id"]).unwrap();
+    assert_eq!(interrupted["status"], "interrupted");
+    assert_eq!(interrupted["reason_code"], "process_interrupted");
+    assert!(interrupted["finished_at"].is_string());
+    assert_eq!(
+        runs.iter().find(|r| r["id"] == completed["id"]).unwrap(),
+        completed
+    );
+    let (_, shown) = cli(
+        &f.home,
+        &["history", "show", interrupted["id"].as_str().unwrap()],
+    );
+    assert_eq!(
+        &shown["data"], interrupted,
+        "Repeated startup must not rewrite an interrupted Run"
+    );
+    assert_eq!(fs::read(artifact).unwrap(), artifact_bytes);
+}
