@@ -183,6 +183,9 @@ impl Engine {
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
+        // Capture and prior engine calls can take time. Revalidate at every launch,
+        // not only when loading configuration or beginning a snapshot.
+        self.validate()?;
         let mut child = command.spawn().context("Starting 7-Zip")?;
         loop {
             if CANCELLED.load(Ordering::Relaxed) && !FINALIZING.load(Ordering::SeqCst) {

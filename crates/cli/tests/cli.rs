@@ -889,3 +889,135 @@ fn state_source_guard_resolves_symlink_ancestors_and_parent_components() {
     assert_eq!(error["reason_code"], "state_inside_source");
     assert!(tree_snapshot(&source) == before);
 }
+
+#[cfg(unix)]
+struct PausedRun(Option<std::process::Child>);
+
+#[cfg(unix)]
+impl PausedRun {
+    fn during_capture(f: &Fixture) -> Self {
+        use std::{
+            process::Stdio,
+            time::{Duration, Instant},
+        };
+        fs::File::create(f.src.join("large.bin"))
+            .unwrap()
+            .set_len(64 * 1024 * 1024)
+            .unwrap();
+        let child = Command::new(env!("CARGO_BIN_EXE_smart-backup"))
+            .args(["--home", f.home.to_str().unwrap(), "--json", "run", "Daily"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut run = Self(Some(child));
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let capture = fs::read_dir(f.out.join(".smart-backup-staging"))
+                .ok()
+                .into_iter()
+                .flatten()
+                .flatten()
+                .map(|e| e.path().join("capture"))
+                .find(|p| p.is_dir());
+            if let Some(capture) = capture {
+                run.signal("-STOP");
+                assert!(
+                    !capture.join(".smart-backup").exists(),
+                    "Missed the capture window"
+                );
+                return run;
+            }
+            assert!(
+                run.0.as_mut().unwrap().try_wait().unwrap().is_none(),
+                "Run exited before capture"
+            );
+            assert!(Instant::now() < deadline, "Run did not reach capture");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    fn signal(&self, signal: &str) {
+        assert!(
+            Command::new("kill")
+                .args([signal, &self.0.as_ref().unwrap().id().to_string()])
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+    fn finish(mut self) -> std::process::Output {
+        // Bound failures and always reap our fixture process.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while self.0.as_mut().unwrap().try_wait().unwrap().is_none() {
+            assert!(std::time::Instant::now() < deadline, "Run did not finish");
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        self.0.take().unwrap().wait_with_output().unwrap()
+    }
+}
+
+#[cfg(unix)]
+impl Drop for PausedRun {
+    fn drop(&mut self) {
+        if let Some(child) = self.0.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn engine_changed_during_capture_is_rejected_before_launch() {
+    use std::io::Write;
+    let f = Fixture::new();
+    let (code, configured) = cli(&f.home, &["engine", "configure", "--path", &engine()]);
+    assert_eq!(code, 0, "{configured}");
+    let original = configured["data"]["path"].as_str().unwrap();
+    let copy = f._tmp.path().join("7zz-copy");
+    fs::copy(original, &copy).unwrap();
+    assert_eq!(
+        cli(
+            &f.home,
+            &["engine", "configure", "--path", copy.to_str().unwrap()]
+        )
+        .0,
+        0
+    );
+    let child = PausedRun::during_capture(&f);
+    let replacement = f._tmp.path().join("7zz-replacement");
+    fs::copy(original, &replacement).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&replacement, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::OpenOptions::new()
+        .append(true)
+        .open(&replacement)
+        .unwrap()
+        .write_all(b"\nchanged engine fixture\n")
+        .unwrap();
+    fs::rename(replacement, &copy).unwrap();
+    child.signal("-CONT");
+    let result = child.finish();
+    let error: Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(result.status.code(), Some(5), "{error}");
+    assert_eq!(error["reason_code"], "engine_hash_mismatch");
+    let (_, history) = cli(&f.home, &["history", "list"]);
+    assert_eq!(history["data"]["runs"][0]["status"], "failed");
+    assert_eq!(
+        history["data"]["runs"][0]["reason_code"],
+        "engine_hash_mismatch"
+    );
+    assert!(
+        !fs::read_dir(&f.out)
+            .unwrap()
+            .flatten()
+            .any(|e| e.path().extension().is_some_and(|x| x == "7z"))
+    );
+    assert_eq!(fs::read(f.src.join("hello.txt")).unwrap(), b"hello world\n");
+    assert!(
+        fs::read(f.src.join("large.bin"))
+            .unwrap()
+            .iter()
+            .all(|b| *b == 0)
+    );
+}
