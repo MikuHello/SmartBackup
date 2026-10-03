@@ -44,7 +44,7 @@ impl App {
         fs2::FileExt::try_lock_exclusive(&lock).map_err(|_| error::Failure {
             exit: 5,
             reason: "busy",
-            message: "Another Smart Backup operation is active".into(),
+            message: "Another SmartBackup operation is active".into(),
         })?;
         if !read_only {
             paths::private_dir(&home.join("jobs"))?;

@@ -1,20 +1,20 @@
-# Smart Backup 技术规格与实施任务书
+# SmartBackup 技术规格与实施任务书
 
 > 状态：正式版需求基线；已实现 CLI alpha 原型，实际能力与未完成项见 [docs/MVP.md](docs/MVP.md)  
-> 工作名称：Smart Backup  
+> 工作名称：SmartBackup\
 > CLI：`smart-backup`，简写 `sb`  
 > 文档日期：2026-09-08  
 > 版本规范：[Semantic Versioning 2.0.0](https://semver.org/lang/zh-CN/)
 
 ## 1. 文档目的
 
-本文档是 Smart Backup 的需求与技术基线，汇总产品定位、最终决策、数据边界、安全约束、跨平台行为和验收标准。交接者不需要回看需求讨论即可据此拆解和实施。
+本文档是 SmartBackup 的需求与技术基线，汇总产品定位、最终决策、数据边界、安全约束、跨平台行为和验收标准。交接者不需要回看需求讨论即可据此拆解和实施。
 
 历史 BAT 原型已退役并从工作目录移除。新项目按本规格实现，不继承同名归档滚动更新行为。
 
 ## 2. 产品定位
 
-Smart Backup 是面向个人用户和开发者的跨平台桌面文件备份工具。用户可以把一个或多个普通文件或目录备份为标准压缩包，并在不依赖 Smart Backup 的情况下用兼容解压工具恢复。
+SmartBackup 是面向个人用户和开发者的跨平台桌面文件备份工具。用户可以把一个或多个普通文件或目录备份为标准压缩包，并在不依赖 SmartBackup 的情况下用兼容解压工具恢复。
 
 ### 2.1 目标用户
 
@@ -412,7 +412,7 @@ GUI 提供：
 
 ### 9.1 责任边界
 
-`7zz` 提供 `-x`、`-xr` 和列表文件等底层排除能力，但 Smart Backup 仍需独立 Filter Engine，以保证：
+`7zz` 提供 `-x`、`-xr` 和列表文件等底层排除能力，但 SmartBackup 仍需独立 Filter Engine，以保证：
 
 - 变化检测；
 - 模拟预览；
@@ -782,7 +782,7 @@ GUI 和 CLI 至少支持：
 - 默认恢复到用户新建或选择的独立目录；
 - 单独运行归档测试与同级 SHA-256 校验。
 
-不提供自动写回原来源位置。即使归档带有 Smart Backup manifest，也必须由用户明确选择恢复目标。
+不提供自动写回原来源位置。即使归档带有 SmartBackup manifest，也必须由用户明确选择恢复目标。
 
 ### 15.2 不受信任输入
 
@@ -1009,7 +1009,7 @@ Windows/Linux ARM64 后续支持。每个平台都要包含匹配架构、锁定
 
 ### 20.3 许可
 
-- Smart Backup 项目采用 MIT OR Apache-2.0 双许可；
+- SmartBackup 项目采用 MIT OR Apache-2.0 双许可；
 - 仓库包含 `LICENSE-MIT`、`LICENSE-APACHE` 和清晰的 README 声明；
 - 内置 `7zz` 继续适用其自身许可证；
 - 发布包包含完整第三方 notices、版本与来源；

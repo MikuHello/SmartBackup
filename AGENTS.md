@@ -1,4 +1,4 @@
-# Smart Backup
+# SmartBackup
 
 Read Task.md for the full target specification; docs/MVP.md records prototype support and limitations. Never silently relax source-read-only, immutable Artifact, fail-closed encryption, or restore containment. Use Rust Core + thin CLI. No shell interpolation. Never delete user archives automatically in this MVP.
 

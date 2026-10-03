@@ -1,4 +1,4 @@
-# Smart Backup 0.1.0-alpha.1 CLI 原型
+# SmartBackup 0.1.0-alpha.1 CLI 原型
 
 这是可运行的第一版 CLI MVP，不是 Task.md 中三平台正式发行的完成声明。历史 BAT 已删除。
 

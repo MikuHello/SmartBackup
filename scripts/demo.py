@@ -21,7 +21,7 @@ source = base / 'source'
 output = base / 'backups'
 source.mkdir()
 output.mkdir()
-(source / 'hello.txt').write_text('Smart Backup: restored bytes match source.\n', encoding='utf-8')
+(source / 'hello.txt').write_text('SmartBackup: restored bytes match source.\n', encoding='utf-8')
 (source / '项目说明.txt').write_text('中文文件名与内容验证 🐾\n', encoding='utf-8')
 (source / 'desktop.ini').write_text('ignored system file', encoding='utf-8')
 (source / 'empty').mkdir()

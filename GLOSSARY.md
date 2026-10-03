@@ -1,4 +1,4 @@
-# Smart Backup
+# SmartBackup
 
 用户将普通文件保存为可独立恢复的压缩快照。
 

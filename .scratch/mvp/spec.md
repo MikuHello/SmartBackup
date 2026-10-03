@@ -1,4 +1,4 @@
-# Smart Backup CLI MVP
+# SmartBackup CLI MVP
 
 Status: done
 
